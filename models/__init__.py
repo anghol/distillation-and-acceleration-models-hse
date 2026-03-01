@@ -1,0 +1,1 @@
+from .anime_gan import GeneratorV1

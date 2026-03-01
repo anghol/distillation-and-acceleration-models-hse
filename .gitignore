@@ -1,0 +1,6 @@
+__pycache__/
+lectures/
+pictures/v3_*
+result_*/
+sources/
+*.docx
