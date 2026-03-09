@@ -1,5 +1,8 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.quantization
+
 from utils.common import initialize_weights
 from .layers import LayerNorm2d
 
@@ -12,12 +15,29 @@ class DownConv(nn.Module):
         self.conv1 = SeparableConv2D(channels, channels, stride=2, bias=bias)
         self.conv2 = SeparableConv2D(channels, channels, stride=1, bias=bias)
 
-    def forward(self, x):
-        out1 = self.conv1(x)
-        out2 = F.interpolate(x, scale_factor=0.5, mode='bilinear')
-        out2 = self.conv2(out2)
+        # для квантованного режима
+        self.add = nn.quantized.FloatFunctional()
+        self.dequant = torch.quantization.DeQuantStub()
 
-        return out1 + out2
+    def forward(self, x):    
+        out1 = self.conv1(x)
+        
+        if x.is_quantized:
+            scale = x.q_scale()
+            zero_point = x.q_zero_point()
+            
+            x_float = self.dequant(x)
+            out2 = F.interpolate(x_float, scale_factor=0.5, mode='bilinear')
+            out2 = torch.quantize_per_tensor(
+                out2, scale, zero_point, torch.quint8
+            )
+            out2 = self.conv2(out2)
+            return self.add.add(out1, out2)
+
+        else:
+            out2 = F.interpolate(x, scale_factor=0.5, mode='bilinear')
+            out2 = self.conv2(out2)
+            return out1 + out2
 
 
 class UpConv(nn.Module):
@@ -58,9 +78,9 @@ class SeparableConv2D(nn.Module):
             kernel_size=1, stride=1, bias=bias)
 
         self.ins_norm1 = nn.InstanceNorm2d(in_channels)
-        self.activation1 = nn.LeakyReLU(0.2, True)
+        self.activation1 = nn.LeakyReLU(0.2)
         self.ins_norm2 = nn.InstanceNorm2d(out_channels)
-        self.activation2 = nn.LeakyReLU(0.2, True)
+        self.activation2 = nn.LeakyReLU(0.2)
 
         initialize_weights(self)
 
@@ -83,7 +103,7 @@ class ConvBlock(nn.Module):
         out_channels,
         kernel_size=3,
         stride=1,
-        padding="valid",
+        padding=0,
         bias=False,
         norm_type="instance"
     ):
@@ -110,7 +130,7 @@ class ConvBlock(nn.Module):
             self.ins_norm = nn.InstanceNorm2d(out_channels)
         elif norm_type == "layer":
             self.ins_norm = LayerNorm2d(out_channels)
-        self.activation = nn.LeakyReLU(0.2, True)
+        self.activation = nn.LeakyReLU(0.2)
 
         initialize_weights(self)
 
@@ -167,9 +187,12 @@ class InvertedResBlock(nn.Module):
             # Keep var name as is for v1 compatibility.
             self.ins_norm1 = LayerNorm2d(bottleneck_dim)
             self.ins_norm2 = LayerNorm2d(out_channels)
-        self.activation = nn.LeakyReLU(0.2, True)
+        self.activation = nn.LeakyReLU(0.2)
 
         initialize_weights(self)
+
+        # для квантованного режима
+        self.add = nn.quantized.FloatFunctional()
 
     def forward(self, x):
         out = self.conv_block(x)
@@ -182,4 +205,8 @@ class InvertedResBlock(nn.Module):
         if out.shape[1] != x.shape[1]:
             # Only concate if same shape
             return out
+
+        if x.is_quantized:
+            return self.add.add(out, x)
+            
         return out + x

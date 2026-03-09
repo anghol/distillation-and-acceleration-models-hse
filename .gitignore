@@ -1,4 +1,6 @@
 __pycache__/
+.ipynb_checkpoints/
+.tmp_train/
 lectures/
 pictures/v3_*
 result_*/
