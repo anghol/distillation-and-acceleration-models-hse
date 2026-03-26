@@ -5,6 +5,7 @@ lectures/
 pictures/v3_*
 result_*/
 sources/
+runs_*/
 *.docx
 inference_onnx.py
 profiling_onnx.ipynb

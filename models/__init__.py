@@ -1,1 +1,1 @@
-from .anime_gan import GeneratorV1
+from .anime_gan import GeneratorV1, Discriminator
