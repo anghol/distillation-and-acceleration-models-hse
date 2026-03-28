@@ -185,41 +185,41 @@ class Trainer(DDPTrainer):
             anime_gray = data["anime_gray"].to(self.device)
             anime_smt_gray = data["smooth_gray"].to(self.device)
 
-            # # ---------------- TRAIN D ---------------- #
-            # self.optimizer_d.zero_grad()
+            # ---------------- TRAIN D ---------------- #
+            self.optimizer_d.zero_grad()
 
-            # with autocast(str(self.device), enabled=self.cfg.amp):
-            #     fake_img = self.G(img)
-            #     # Add some Gaussian noise to images before feeding to D
-            #     if self.cfg.d_noise:
-            #         fake_img += gaussian_noise()
-            #         anime += gaussian_noise()
-            #         anime_gray += gaussian_noise()
-            #         anime_smt_gray += gaussian_noise()
+            with autocast(str(self.device), enabled=self.cfg.amp):
+                fake_img = self.G(img)
+                # Add some Gaussian noise to images before feeding to D
+                if self.cfg.d_noise:
+                    fake_img += gaussian_noise()
+                    anime += gaussian_noise()
+                    anime_gray += gaussian_noise()
+                    anime_smt_gray += gaussian_noise()
 
-            #     if self.cfg.gray_adv:
-            #         fake_img = to_gray_scale(fake_img)
+                if self.cfg.gray_adv:
+                    fake_img = to_gray_scale(fake_img)
 
-            #     fake_d = self.D(fake_img.detach())
-            #     real_anime_d = self.D(anime)
-            #     real_anime_gray_d = self.D(anime_gray)
-            #     real_anime_smt_gray_d = self.D(anime_smt_gray)
+                fake_d = self.D(fake_img.detach())
+                real_anime_d = self.D(anime)
+                real_anime_gray_d = self.D(anime_gray)
+                real_anime_smt_gray_d = self.D(anime_smt_gray)
 
-            #     loss_d = self.loss_fn.compute_loss_D(
-            #         fake_d,
-            #         real_anime_d,
-            #         real_anime_gray_d,
-            #         real_anime_smt_gray_d
-            #     )
+                loss_d = self.loss_fn.compute_loss_D(
+                    fake_d,
+                    real_anime_d,
+                    real_anime_gray_d,
+                    real_anime_smt_gray_d
+                )
 
-            # self.scaler_d.scale(loss_d).backward()
-            # self.scaler_d.unscale_(self.optimizer_d)
-            # torch.nn.utils.clip_grad_norm_(self.D.parameters(), max_norm=self.max_norm)
-            # self.scaler_d.step(self.optimizer_d)
-            # self.scaler_d.update()
-            # if self.cfg.ddp:
-            #     torch.distributed.barrier()
-            # self.loss_tracker.update_loss_D(loss_d)
+            self.scaler_d.scale(loss_d).backward()
+            self.scaler_d.unscale_(self.optimizer_d)
+            torch.nn.utils.clip_grad_norm_(self.D.parameters(), max_norm=self.max_norm)
+            self.scaler_d.step(self.optimizer_d)
+            self.scaler_d.update()
+            if self.cfg.ddp:
+                torch.distributed.barrier()
+            self.loss_tracker.update_loss_D(loss_d)
 
             # ---------------- TRAIN G ---------------- #
             self.optimizer_g.zero_grad()
@@ -259,7 +259,7 @@ class Trainer(DDPTrainer):
                 torch.distributed.barrier()
 
             self.loss_tracker.update_loss_G(adv_loss, gra_loss, col_loss, con_loss)
-            pbar.set_description(f"{self.loss_tracker.get_loss_description(show_d=False)} - {grad:.3f}")
+            pbar.set_description(f"{self.loss_tracker.get_loss_description()} - {grad:.3f}")
 
     def get_train_loader(self, dataset):
         if self.cfg.ddp:
